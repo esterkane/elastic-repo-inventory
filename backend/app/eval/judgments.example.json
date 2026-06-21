@@ -1,0 +1,8 @@
+{
+  "How do I combine lexical and vector search?": ["chunk-hybrid-rrf", "chunk-hybrid-intro"],
+  "When should I use RRF instead of weighted score fusion?": {
+    "chunk-rrf-vs-weights": 2,
+    "chunk-hybrid-rrf": 1
+  },
+  "How do I add a reranker to hybrid retrieval?": ["chunk-rerank-tei"]
+}

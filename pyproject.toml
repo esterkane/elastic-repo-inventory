@@ -16,6 +16,9 @@ dependencies = [
 dev = [
     "pytest>=8.0",
 ]
+eval = [
+    "relevance-eval @ git+https://github.com/esterkane/elastic-ai-search-decision-lab.git@main#subdirectory=skills/relevance-eval",
+]
 
 [build-system]
 requires = ["setuptools>=68"]

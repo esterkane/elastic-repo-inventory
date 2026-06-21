@@ -1,0 +1,10 @@
+{
+  "default": {
+    "ndcg@3": 0.40
+  },
+  "hybrid": {
+    "precision@1": 0.50,
+    "mrr@3": 0.55,
+    "ndcg@3": 0.50
+  }
+}
