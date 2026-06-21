@@ -54,6 +54,18 @@ Tools: `hybrid_search`, `get_chunk`, `rerank`, `list_sources`. See `docs/mcp.md`
 Deterministic evaluation (manual `eval.yml` workflow): runs `python -m pytest backend/tests`
 and records NDCG@10 / MRR@10 / Recall@20 expectations to `artifacts/eval/summary.txt`.
 
+Retrieval-quality evaluation via the shared **`relevance_eval`** skill (optional `eval`
+extra, a git dependency). A thin adapter (`backend/app/eval/skill_adapter.py`) injects the
+async hybrid `RetrievalService` into the skill's `search_fn(query, strategy) -> [chunk_id]`
+contract; the runner gates Precision@k / MRR@k / nDCG@k against thresholds. One pipeline =
+one strategy (`hybrid`). Install/run from `backend/`:
+```powershell
+python -m pip install -e ".[eval]"
+python -m app.eval.run_eval          # writes reports/retrieval_eval.{json,md}; non-zero on gate fail
+```
+A real run needs a live stack (Postgres + Qdrant + TEI); offline unit tests
+(`backend/tests/test_eval_skill_integration.py`) cover the wiring with a fake service.
+
 NOTE: There is no checked-in linter or type-checker config (no ruff/mypy/eslint setup,
 no Makefile, no `config.example.yaml`). The quality gate is: backend pytest, frontend
 build, and the Compose/API integration job — nothing else is enforced. Do not invent

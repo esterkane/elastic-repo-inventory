@@ -195,6 +195,32 @@ Validate Docker Compose:
 docker compose config --quiet
 ```
 
+## Retrieval Evaluation
+
+Retrieval quality (Precision@k / MRR@k / nDCG@k) is measured with the reusable
+**`relevance_eval`** skill, installed as the optional `eval` extra (a git
+dependency). A thin adapter (`backend/app/eval/skill_adapter.py`) injects this
+repo's async hybrid `RetrievalService` into the skill's `search_fn` contract, so
+the metrics live in the shared skill and only the retrieval wiring lives here.
+
+There is a single hybrid pipeline today, so there is one strategy: `hybrid`
+(lexical Postgres FTS + dense Qdrant, RRF-fused). Lexical-only / vector-only are
+possible future strategy variants, not separate paths today.
+
+Install and run (from `backend/`):
+
+```powershell
+python -m pip install -e ".[eval]"   # pulls the relevance_eval skill from git
+python -m app.eval.run_eval          # writes reports/retrieval_eval.{json,md}, gates on thresholds
+```
+
+The runner loads judgments (`backend/app/eval/judgments.example.json`) and
+thresholds (`backend/app/eval/thresholds.example.json`), prints the Markdown
+report, and exits non-zero if a threshold gate fails. A real run needs a live
+stack (Postgres + Qdrant + TEI) populated by ingestion, so run it locally; the
+offline unit tests (`backend/tests/test_eval_skill_integration.py`) cover the
+wiring with a fake service.
+
 ## Inventory CLI
 
 The repository inventory CLI writes deterministic artifacts for the configured Elastic repos:
