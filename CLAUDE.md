@@ -44,6 +44,13 @@ Inventory CLI (writes `artifacts/repo-manifest.{json,md}`, clones into `sources/
 python tools/repo_inventory.py
 ```
 
+MCP server (read-only agent tools over the retrieval core; reuses the API's env vars):
+```powershell
+python -m backend.app.mcp.server          # stdio (default)
+$env:MCP_TRANSPORT="http"; python -m backend.app.mcp.server   # streamable-HTTP
+```
+Tools: `hybrid_search`, `get_chunk`, `rerank`, `list_sources`. See `docs/mcp.md`.
+
 Deterministic evaluation (manual `eval.yml` workflow): runs `python -m pytest backend/tests`
 and records NDCG@10 / MRR@10 / Recall@20 expectations to `artifacts/eval/summary.txt`.
 
@@ -58,7 +65,7 @@ lint/type commands.
 2. `backend/app/ingest/` parses Markdown, normalizes metadata, and chunks deterministically (`sha256(repo:path:anchor:chunk_index)`); only changed chunks (by content hash) are re-embedded.
 3. Chunks land in PostgreSQL (pgvector, lexical full-text) and Qdrant (dense vectors via the TEI embedding service); `backend/app/retrieval/` fuses both with RRF, metadata boosts, source de-dup, and optional TEI rerank.
 4. `backend/app/recommend/` + answer synthesis build a release-aware briefing (answer / what's new / why it matters / evidence) — deterministic synthesis, NOT an LLM generation chain.
-5. `frontend/` (React 19 + Vite) renders the briefing UI; the FastAPI app (`backend/app/main.py`, routers in `backend/app/api/`) exposes `/api/v1/*`.
+5. `frontend/` (React 19 + Vite) renders the briefing UI; the FastAPI app (`backend/app/main.py`, routers in `backend/app/api/`) exposes `/api/v1/*`. `backend/app/mcp/` exposes the same retrieval core as **read-only** MCP tools (`hybrid_search`, `get_chunk`, `rerank`, `list_sources`) — see `docs/mcp.md`.
 
 ## Invariants I must never break
 
@@ -71,6 +78,7 @@ Repo-specific invariants:
 - **Hybrid retrieval, not single-mode.** Combine lexical (Postgres) + vector (Qdrant) with RRF. Reranking is optional (TEI rerank profile / `TEI_RERANK_URL`).
 - **Graceful degradation (reliability contract).** If vector fails → return lexical with a warning; if lexical fails → return vector with a warning; if rerank fails/disabled → return fused results, mark rerank skipped in explain mode; if one repo's sync fails → index the rest and report the failed repo.
 - **Active source set only.** Ingest `elastic/docs-content`, `elastic/elasticsearch-labs`, `elastic/labs-releases`. Deprecated `elastic/docs` and `elastic/docs-builder` stay out. Serverless content is not promoted unless the query asks for it.
+- **MCP tools are thin and read-only.** `backend/app/mcp/` adapters must contain no business logic — they validate input, call existing retrieval functions, and shape output (matching the HTTP API). Never expose ingestion/admin as a tool without an `MCP_ALLOW_MUTATIONS` flag defaulting to `false`. Every tool returns a structured result or a structured error — never a raw exception/stack trace.
 
 ## Definition of done
 
@@ -81,6 +89,7 @@ Repo-specific invariants:
 - [ ] Provenance intact: every new/changed chunk record keeps full source metadata; no untraceable answer paths.
 - [ ] README/docs updated when behavior, config vars, or the source-repo set change.
 - [ ] No secrets added; Compose stays on env-var interpolation with non-secret defaults.
+- [ ] If MCP tools changed: they stay thin (no business logic), read-only, and validated; `docs/mcp.md` + the README "Agent Access" section are updated; `backend/tests/test_mcp_tools.py` covers the change.
 
 ## External services & config
 
