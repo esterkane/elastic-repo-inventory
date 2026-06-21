@@ -63,11 +63,13 @@ describe("SearchPage", () => {
     expect(screen.getByLabelText(/Time range/i)).toHaveValue("latest");
   });
 
-  it("renders the answer region before the results region", () => {
+  it("renders the answer region before the results region", async () => {
     render(<SearchPage />);
 
-    const answerHeading = screen.getByRole("heading", { name: "Answer" });
-    const resultsHeading = screen.getByRole("heading", { name: /Sources/i });
+    fireEvent.click(screen.getByRole("button", { name: /Search/i }));
+
+    const answerHeading = await screen.findByRole("heading", { name: "Answer" });
+    const resultsHeading = screen.getByRole("heading", { name: "Sources" });
 
     expect(answerHeading.compareDocumentPosition(resultsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });

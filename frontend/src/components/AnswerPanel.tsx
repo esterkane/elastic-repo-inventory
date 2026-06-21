@@ -12,7 +12,8 @@ type AnswerPanelProps = {
 };
 
 export function AnswerPanel({ answer, searchHits = [], isLoading = false }: AnswerPanelProps) {
-  const effectiveAnswer = answerHasEvidence(answer) ? answer : answerFromSearchHits(searchHits);
+  const hasSynthesizedAnswer = answerHasEvidence(answer);
+  const effectiveAnswer = hasSynthesizedAnswer ? answer : answerFromSearchHits(searchHits);
 
   if (!effectiveAnswer && !isLoading) {
     return (
@@ -29,10 +30,11 @@ export function AnswerPanel({ answer, searchHits = [], isLoading = false }: Answ
   }
 
   const model = formatAnswer(effectiveAnswer);
+  const fallbackNotice = !hasSynthesizedAnswer && !isLoading ? effectiveAnswer?.explanation ?? null : null;
 
   return (
     <section className="answer-explorer" aria-label="Answer explorer">
-      <AnswerSummary model={model} isLoading={isLoading} />
+      <AnswerSummary model={model} isLoading={isLoading} fallbackNotice={fallbackNotice} />
 
       <section className="evidence-panel" aria-labelledby="evidence-heading">
         <div className="panel-heading">

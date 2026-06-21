@@ -47,8 +47,9 @@ describe("AnswerPanel", () => {
     render(<AnswerPanel answer={null} searchHits={hybridRetrievalSearch.hits} />);
 
     expect(screen.getByText(/using ranked release sources directly/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Ranking and reranking" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Read docs/i })).toHaveAttribute(
+    const docsEvidence = screen.getByRole("heading", { name: "Ranking and reranking" }).closest("article");
+    expect(docsEvidence).not.toBeNull();
+    expect(within(docsEvidence!).getByRole("link", { name: /Read docs/i })).toHaveAttribute(
       "href",
       "https://www.elastic.co/docs/solutions/search/ranking#two-stage-retrieval-pipelines"
     );

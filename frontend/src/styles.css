@@ -623,6 +623,16 @@ button:disabled {
   line-height: 1.6;
 }
 
+.explain-block .fallback-notice {
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-left: 3px solid #f0a020;
+  border-radius: 4px;
+  background: #fff7e8;
+  color: #5c4513;
+  font-size: 0.9rem;
+}
+
 .metadata-list {
   display: grid;
   gap: 7px;
