@@ -118,6 +118,25 @@ Current source repositories:
 
 Deprecated repos such as `elastic/docs` and `elastic/docs-builder` are intentionally not part of the active ingestion set.
 
+## Agent Access (MCP)
+
+The retrieval core is also exposed as a **read-only** [MCP](https://modelcontextprotocol.io)
+server, so an MCP client (a LangGraph agent, Claude Code, Cursor) can use it as tools.
+The tools are thin adapters over the same functions the HTTP API uses — `hybrid_search`
+returns the identical hit shape as `POST /api/v1/search`.
+
+| Tool | Purpose |
+|------|---------|
+| `hybrid_search(query, limit, filters, explain)` | Hybrid (lexical + dense, RRF) retrieval over the indexed docs. |
+| `get_chunk(chunk_id)` | Fetch one chunk by id with full provenance. |
+| `rerank(query, chunk_ids)` | Re-score a candidate set with the TEI cross-encoder. |
+| `list_sources()` | Catalog of indexed repositories and chunk counts. |
+
+Ingestion/admin is intentionally **not** exposed. Run the server with
+`python -m backend.app.mcp.server` (stdio by default; `MCP_TRANSPORT=http` for
+streamable-HTTP). Full tool reference, error contract, and client registration:
+[docs/mcp.md](docs/mcp.md).
+
 ## Configuration Reference
 
 This project currently uses environment variables from `docker-compose.yml`; there is no checked-in `config.example.yaml` or `Makefile`.

@@ -167,6 +167,66 @@ class PostgresFTSRepository:
             )
         return hydrated
 
+    async def get(self, chunk_id: str) -> RankedHit | None:
+        """Fetch a single chunk by its id, or None if it does not exist.
+
+        Mirrors :meth:`hydrate`'s projection so callers (the API and the MCP
+        ``get_chunk`` / ``rerank`` tools) see the same chunk shape.
+        """
+        statement = text(
+            f"""
+            SELECT id, content, metadata, source_url, repo, path
+            FROM {self.table_name}
+            WHERE id = :chunk_id
+            LIMIT 1
+            """
+        )
+        try:
+            async with self.engine.connect() as connection:
+                result = await connection.execute(statement, {"chunk_id": chunk_id})
+        except SQLAlchemyError as exc:
+            if is_missing_relation(exc):
+                return None
+            raise
+        row = result.mappings().first()
+        if row is None:
+            return None
+        metadata = normalize_metadata(
+            dict(row["metadata"] or {}),
+            source_url=str(row["source_url"]),
+            repo=str(row["repo"] or ""),
+            path=str(row["path"] or ""),
+        )
+        return RankedHit(
+            id=str(row["id"]),
+            score=0.0,
+            metadata=metadata,
+            source_url=str(row["source_url"]),
+            text=str(row["content"] or ""),
+        )
+
+    async def list_sources(self) -> list[dict[str, object]]:
+        """Return the distinct indexed sources (repos) with their chunk counts."""
+        statement = text(
+            f"""
+            SELECT repo, COUNT(*) AS chunk_count
+            FROM {self.table_name}
+            GROUP BY repo
+            ORDER BY repo
+            """
+        )
+        try:
+            async with self.engine.connect() as connection:
+                result = await connection.execute(statement)
+        except SQLAlchemyError as exc:
+            if is_missing_relation(exc):
+                return []
+            raise
+        return [
+            {"repo": str(row["repo"] or ""), "chunk_count": int(row["chunk_count"] or 0)}
+            for row in result.mappings()
+        ]
+
 
 class RerankerClient:
     def __init__(self, endpoint_url: str, model: str | None = None, timeout: float = 30.0) -> None:
