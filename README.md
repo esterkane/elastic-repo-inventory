@@ -137,6 +137,63 @@ Ingestion/admin is intentionally **not** exposed. Run the server with
 streamable-HTTP). Full tool reference, error contract, and client registration:
 [docs/mcp.md](docs/mcp.md).
 
+## Research-briefing supervisor (multi-agent)
+
+`backend/app/agents/` adds an **opt-in** multi-agent research-briefing supervisor
+that *wraps* — never replaces — the existing hybrid retrieval and deterministic
+synthesis. It is **feature-flagged off by default** (`AGENTS_ENABLED=false`): with
+the flag off the deterministic `/answer` synthesis stays the default and existing
+API/UI behaviour is byte-for-byte unchanged, and no agent route or job is active.
+
+The supervisor orchestrates:
+
+```
+planner -> (retrieval + rerank per sub-question) -> writer -> verifier
+```
+
+| Agent | Wraps (existing function) |
+|-------|---------------------------|
+| **PlannerAgent** | Provider decomposition (deterministic rules by default). |
+| **RetrievalAgent** | `RetrievalService.retrieve` (hybrid lexical + dense RRF) via `agents/tools.retrieve_tool`. |
+| **RerankAgent** | `RerankerClient.rerank` (TEI cross-encoder) via `agents/tools.rerank_tool`. |
+| **WriterAgent** | The provider; the deterministic provider reuses `answer_evidence` + `synthesize_answer_model`. |
+| **VerifierAgent** | `relevance_eval.faithfulness_score` (the shared relevance-eval skill) plus a retained-`source_url` check. |
+
+**VerifierAgent — the provenance safety mechanism.** Every claim in the briefing
+carries the `source_url` of a *retrieved* chunk. The verifier checks two things
+per claim: (1) it is token-supported by the retrieved chunk texts, scored with
+`relevance_eval.faithfulness_score`, and (2) its attached `source_url` is in the
+retained (actually-retrieved) set. A claim *traces* only if BOTH hold. **The
+briefing FAILS verification if any claim does not trace** — the supervisor then
+returns it marked `verified=false` with the offending claims listed rather than
+silently emitting an unsupported briefing.
+
+**Reliability contract honoured.** The agents reuse the retrieval service's
+existing warnings / `degraded` mechanism — if a stage degrades (lexical, dense,
+or rerank down) the warning is carried forward and the run continues with what is
+available; nothing crashes and nothing is reinvented.
+
+**Swappable LLM provider.** The LLM lives behind one `AgentLlmProvider` protocol.
+`DeterministicProvider` is the offline/test default (the existing deterministic
+synthesis, wrapped). `OllamaProvider` is the documented **local default** — it
+uses the wired docker-compose Ollama service (`OLLAMA_URL`/`OLLAMA_MODEL`),
+grounds every claim in a retrieved chunk's `source_url`, and falls back to
+deterministic synthesis (with a degradation warning) if the model is unreachable.
+Select it with `AGENTS_PROVIDER=ollama`.
+
+**Citation-accuracy + faithfulness eval.** `backend/app/agents/eval.py` runs a
+small **committed** fixture (`fixtures/briefing_eval.json`: questions + canned
+retrieved chunks) fully offline and reports **citation-accuracy** (fraction of
+claims with a valid retained `source_url`) and **answer-faithfulness** (via the
+relevance-eval skill). Run from `backend/`:
+
+```powershell
+python -m app.agents.eval        # prints a report; writes reports/agents_eval.{json,md}
+```
+
+On the committed fixture every grounded claim traces, so both metrics are `1.0`
+and all briefings verify (`backend/tests/test_agents.py` asserts these numbers).
+
 ## Configuration Reference
 
 This project currently uses environment variables from `docker-compose.yml`; there is no checked-in `config.example.yaml` or `Makefile`.
@@ -169,6 +226,10 @@ Important environment variables:
 | `INGEST_EMBED_BATCH_SIZE` | Optional | `8` | Embedding batch size |
 | `INGEST_UPSERT_BATCH_SIZE` | Optional | `64` | Vector/database flush batch size |
 | `SOURCES_DIR` | Optional | `/app/sources` in Compose | Managed source checkout directory |
+| `AGENTS_ENABLED` | Optional | `false` | Enables the multi-agent research-briefing supervisor (off by default; deterministic `/answer` stays the default) |
+| `AGENTS_PROVIDER` | Optional | `deterministic` | LLM provider for the planner/writer: `deterministic` (offline) or `ollama` |
+| `OLLAMA_URL` | Optional | `http://llm:11434` | Wired Ollama service URL for the local LLM provider |
+| `OLLAMA_MODEL` | Optional | `llama3.2` | Ollama model name for the local LLM provider |
 
 For dependency hygiene, optional reranker guidance, and version strategy, see [Dependency Strategy](docs/dependency-strategy.md).
 
