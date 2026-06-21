@@ -1,0 +1,51 @@
+{
+  "description": "Offline fixture for the research-briefing supervisor eval. Each case ships a question and the canned retrieved chunks (with source_url) so the eval + its test run with no live ES/Qdrant/TEI/Ollama. Citation-accuracy and faithfulness are measured against these retained chunks via the deterministic provider.",
+  "support_threshold": 0.6,
+  "cases": [
+    {
+      "id": "esql-lookup-join",
+      "query": "What is new in ES|QL for join and lookup queries?",
+      "chunks": [
+        {
+          "id": "chunk-esql-1",
+          "source_url": "https://github.com/elastic/docs-content/blob/main/release-notes/esql.md#lookup-join",
+          "repo": "elastic/docs-content",
+          "path": "release-notes/esql.md",
+          "title": "ES|QL release notes",
+          "heading_path": "Release notes > ES|QL > LOOKUP JOIN",
+          "content_type": "release_note",
+          "license_family": "elastic-license",
+          "text": "ES|QL adds a new LOOKUP JOIN command that enriches rows from an index by joining on a matched field. The LOOKUP JOIN command improves query latency for enrichment workloads compared to the older enrich pipeline approach."
+        },
+        {
+          "id": "chunk-esql-2",
+          "source_url": "https://github.com/elastic/docs-content/blob/main/esql/commands.md#join",
+          "repo": "elastic/docs-content",
+          "path": "esql/commands.md",
+          "title": "ES|QL commands",
+          "heading_path": "ES|QL > Commands > JOIN",
+          "content_type": "guide",
+          "license_family": "elastic-license",
+          "text": "The JOIN command in ES|QL changes execution behavior by streaming matched rows. This matters because moving enrichment into ES|QL reduces the number of pipelines you maintain."
+        }
+      ]
+    },
+    {
+      "id": "vector-recall",
+      "query": "What changed for vector search recall and memory in the latest release?",
+      "chunks": [
+        {
+          "id": "chunk-vec-1",
+          "source_url": "https://github.com/elastic/docs-content/blob/main/release-notes/vector-search.md#recall",
+          "repo": "elastic/docs-content",
+          "path": "release-notes/vector-search.md",
+          "title": "Vector search release notes",
+          "heading_path": "Release notes > Vector search > Recall",
+          "content_type": "release_note",
+          "license_family": "elastic-license",
+          "text": "Vector search now improves recall for filtered kNN queries by applying the filter during graph traversal. This change reduces memory use for large dense vector indices and lowers query latency for filtered semantic search."
+        }
+      ]
+    }
+  ]
+}

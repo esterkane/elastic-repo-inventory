@@ -78,6 +78,20 @@ lint/type commands.
 3. Chunks land in PostgreSQL (pgvector, lexical full-text) and Qdrant (dense vectors via the TEI embedding service); `backend/app/retrieval/` fuses both with RRF, metadata boosts, source de-dup, and optional TEI rerank.
 4. `backend/app/recommend/` + answer synthesis build a release-aware briefing (answer / what's new / why it matters / evidence) — deterministic synthesis, NOT an LLM generation chain.
 5. `frontend/` (React 19 + Vite) renders the briefing UI; the FastAPI app (`backend/app/main.py`, routers in `backend/app/api/`) exposes `/api/v1/*`. `backend/app/mcp/` exposes the same retrieval core as **read-only** MCP tools (`hybrid_search`, `get_chunk`, `rerank`, `list_sources`) — see `docs/mcp.md`.
+6. `backend/app/agents/` adds an **opt-in** (`AGENTS_ENABLED`, default false) research-briefing multi-agent supervisor (`planner -> retrieval + rerank -> writer -> verifier`) that **wraps, never replaces** the hybrid retrieval and deterministic synthesis. The provenance-enforcing `VerifierAgent` (reusing `relevance_eval.faithfulness_score`) rejects any briefing with a claim that does not trace to a retained `source_url`.
+
+## Agents architecture & invariants
+
+The agents package wraps existing functions — no parallel retrieval/synthesis:
+
+- **PlannerAgent** decomposes the question (deterministic rules by default; LLM via the provider). **RetrievalAgent**/**RerankAgent** call `RetrievalService.retrieve` / `RerankerClient.rerank` through `agents/tools.py`. **WriterAgent** drafts via the provider; the `DeterministicProvider` reuses `answer_evidence` + `synthesize_answer_model`, so the off/test path *is* the existing deterministic synthesis.
+- **Deterministic synthesis is wrapped, not replaced.** When `AGENTS_ENABLED` is off the deterministic `/answer` path stays the default and is byte-for-byte unchanged; no agent route/job is active.
+- **Every claim carries a retained `source_url`.** A briefing is only valid if every claim traces to a chunk that was actually retrieved.
+- **Verification gate (the safety mechanism).** `VerifierAgent` checks per claim: token support (via `relevance_eval.faithfulness_score`, the shared eval skill) AND that the claim's `source_url` is in the retained set. **The briefing fails verification if any claim does not trace**, and the supervisor returns it `verified=false` with the offending claims rather than silently emitting it.
+- **Reliability contract honoured.** Retrieval `warnings` / `degraded` are propagated and carried forward; a degraded stage does not crash the run; the warnings mechanism is reused, not reinvented.
+- **Flag-gated, default-off.** `AGENTS_ENABLED` is read via `os.getenv` (there is no `config.py`), defaulting to false.
+- **Provider-swappable.** The LLM lives behind one `AgentLlmProvider` protocol: `DeterministicProvider` (offline/test default), `OllamaProvider` (documented local default, wired `OLLAMA_URL`/`OLLAMA_MODEL`). Tests never require a network.
+- **Reuse the eval skill.** Citation-accuracy + answer-faithfulness are measured on the committed `backend/app/agents/fixtures/briefing_eval.json` fixture via `relevance_eval.faithfulness_score` — fully offline (`backend/app/agents/eval.py`).
 
 ## Invariants I must never break
 
@@ -102,6 +116,7 @@ Repo-specific invariants:
 - [ ] README/docs updated when behavior, config vars, or the source-repo set change.
 - [ ] No secrets added; Compose stays on env-var interpolation with non-secret defaults.
 - [ ] If MCP tools changed: they stay thin (no business logic), read-only, and validated; `docs/mcp.md` + the README "Agent Access" section are updated; `backend/tests/test_mcp_tools.py` covers the change.
+- [ ] If the agents package changed: deterministic synthesis stays wrapped (not replaced) and `/answer` is unchanged with `AGENTS_ENABLED` off; every briefing claim carries a retained `source_url`; `VerifierAgent` still rejects any non-tracing claim (test proves an unsupported claim is caught); the reliability contract is honoured; the provider stays swappable; `backend/app/agents/eval.py` reuses `relevance_eval.faithfulness_score`; `backend/tests/test_agents.py` covers the change and runs fully offline.
 
 ## External services & config
 
