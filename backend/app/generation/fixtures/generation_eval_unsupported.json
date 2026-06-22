@@ -1,0 +1,25 @@
+{
+  "description": "Companion fixture that injects ONE answer making a claim its sources do not support. The eval scores the `injected_answer` verbatim (it does NOT trace), so faithfulness < 1.0 for that case and a gate requiring full faithfulness FAILS (exits non-zero). This proves the gate catches an unfaithful generation the same way the relevance gate catches a retrieval regression.",
+  "support_threshold": 0.6,
+  "cases": [
+    {
+      "id": "vector-recall-hallucinated",
+      "query": "What changed for vector search recall and memory in the latest release?",
+      "gold_answer": "Vector search now improves recall for filtered kNN queries by applying the filter during graph traversal, which reduces memory use for large dense vector indices and lowers query latency for filtered semantic search.",
+      "injected_answer": "Vector search now improves recall for filtered kNN queries by applying the filter during graph traversal. Elasticsearch also ships a built-in quantum reranker that triples recall overnight with zero configuration.",
+      "chunks": [
+        {
+          "id": "chunk-vec-1",
+          "source_url": "https://github.com/elastic/docs-content/blob/main/release-notes/vector-search.md#recall",
+          "repo": "elastic/docs-content",
+          "path": "release-notes/vector-search.md",
+          "title": "Vector search release notes",
+          "heading_path": "Release notes > Vector search > Recall",
+          "content_type": "release_note",
+          "license_family": "elastic-license",
+          "text": "Vector search now improves recall for filtered kNN queries by applying the filter during graph traversal. This change reduces memory use for large dense vector indices and lowers query latency for filtered semantic search."
+        }
+      ]
+    }
+  ]
+}

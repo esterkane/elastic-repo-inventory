@@ -227,6 +227,7 @@ Important environment variables:
 | `INGEST_UPSERT_BATCH_SIZE` | Optional | `64` | Vector/database flush batch size |
 | `SOURCES_DIR` | Optional | `/app/sources` in Compose | Managed source checkout directory |
 | `AGENTS_ENABLED` | Optional | `false` | Enables the multi-agent research-briefing supervisor (off by default; deterministic `/answer` stays the default) |
+| `GENERATION_ENABLED` | Optional | `false` | Enables the optional grounded-generation answer path (`backend/app/generation/`); off by default, so the deterministic `/answer` stays the default. Distinct from `AGENTS_ENABLED`. |
 | `AGENTS_PROVIDER` | Optional | `deterministic` | LLM provider for the planner/writer: `deterministic` (offline) or `ollama` |
 | `OLLAMA_URL` | Optional | `http://llm:11434` | Wired Ollama service URL for the local LLM provider |
 | `OLLAMA_MODEL` | Optional | `llama3.2` | Ollama model name for the local LLM provider |
@@ -281,6 +282,76 @@ report, and exits non-zero if a threshold gate fails. A real run needs a live
 stack (Postgres + Qdrant + TEI) populated by ingestion, so run it locally; the
 offline unit tests (`backend/tests/test_eval_skill_integration.py`) cover the
 wiring with a fake service.
+
+## Generation is gated on faithfulness the same way search is gated on relevance
+
+`backend/app/generation/` adds an **optional grounded-generation answer path**
+and, crucially, **a faithfulness gate over it** — the generation analogue of the
+relevance gate above. The framing is symmetric: just as a retrieval change must
+clear Precision@k / MRR@k / nDCG@k thresholds before it ships, a generation
+change must clear **citation-accuracy / faithfulness / answer-correctness**
+thresholds. Both gates exit non-zero on regression; both are fully offline; both
+reuse the shared `relevance_eval` skill.
+
+**The answer path (`generation.answer.answer`).** Opt-in via
+`GENERATION_ENABLED` (env, **default `false`**). When off, the app's default
+answer path is the existing deterministic `/answer` synthesis, byte-for-byte
+unchanged — nothing in this package runs. When on, `answer(query)`:
+
+1. **retrieves** evidence through the existing hybrid `RetrievalService`;
+2. **drafts** an answer grounded ONLY in the retrieved chunks via the swappable
+   provider — it reuses the agents' `WriterAgent`, so the deterministic provider
+   path *is* the existing grounded synthesis, with a retained `source_url`
+   attached to every claim;
+3. **verifies** with the agents' `VerifierAgent` — the SAME gate the
+   research-briefing supervisor uses and the SAME measurement the eval scores —
+   keeping only claims that *trace* (token-supported by their cited chunk AND
+   that chunk was retrieved) and dropping/flagging the rest.
+
+It returns `{ "text": str, "citations": [{ "source_url", "claim", "chunk_id",
+"section", "support_score" }, ...], ... }` — a `source_url` on every citation.
+The provider, writer, and verifier are **reused, not duplicated**: generation
+enforces exactly the provenance the eval measures. The default provider is the
+offline `DeterministicProvider`; a real run uses the wired local Ollama provider
+(`AGENTS_PROVIDER=ollama`, `OLLAMA_URL`/`OLLAMA_MODEL`) — documented, never
+required for tests, no secrets in git.
+
+**The three metrics (`backend/app/generation/eval.py`).** On a FIXED, committed
+fixture (`fixtures/generation_eval.json`: questions + a small GOLD answer set +
+canned retrieved chunks):
+
+- **citation-accuracy** — fraction of the answer's claims whose `source_url` is
+  in the retrieved set (straight from the reused `VerifierAgent`);
+- **faithfulness** — fraction of claims token-supported by their cited sources
+  via `relevance_eval.faithfulness_score`; a claim unsupported by / contradicting
+  its sources fails. (True contradiction detection is the LLM/NLI-backed
+  extension behind the provider + scorer interfaces; the offline default uses
+  token support, like the relevance lab.)
+- **answer-correctness** — generated answer vs the gold answer, deterministic
+  token-overlap F1 (`relevance_eval.faithfulness_score` containment); per-question
+  and mean.
+
+**The gate (`backend/app/generation/run_gen_eval.py`).** Mirrors
+`app/eval/run_eval.py` exactly: load fixture + thresholds → run the eval →
+`evaluate_thresholds` → JSON + Markdown via `to_json`/`to_markdown` →
+**exit 0 on pass / 1 on regression**. Thresholds live in the committed
+`backend/app/generation/thresholds.example.json` (`citation_accuracy@1`,
+`faithfulness@1`, `correctness@1`). Run from `backend/`:
+
+```powershell
+python -m pip install -e ".[eval]"
+python -m app.generation.run_gen_eval     # writes reports/generation_eval.{json,md}; non-zero on gate fail
+```
+
+The grounded fixture passes (citation-accuracy `1.0`, faithfulness `1.0`,
+correctness above threshold). A companion fixture
+(`fixtures/generation_eval_unsupported.json`) injects an answer whose final
+sentence is a hallucination its cited source does not support: citation-accuracy
+stays `1.0` (it *does* cite a retrieved source) but faithfulness drops to `0.5`,
+so the gate **fails (exit 1)** — generation is gated on faithfulness the same way
+search is gated on relevance. Everything runs offline; `backend/tests/test_generation.py`
+asserts the contract, the metric numbers, and that the gate catches the
+unfaithful answer.
 
 ## Inventory CLI
 

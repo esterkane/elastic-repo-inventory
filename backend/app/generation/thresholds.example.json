@@ -1,0 +1,8 @@
+{
+  "default": {},
+  "generation": {
+    "citation_accuracy@1": 1.0,
+    "faithfulness@1": 1.0,
+    "correctness@1": 0.55
+  }
+}

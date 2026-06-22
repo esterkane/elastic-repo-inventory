@@ -79,6 +79,7 @@ lint/type commands.
 4. `backend/app/recommend/` + answer synthesis build a release-aware briefing (answer / what's new / why it matters / evidence) — deterministic synthesis, NOT an LLM generation chain.
 5. `frontend/` (React 19 + Vite) renders the briefing UI; the FastAPI app (`backend/app/main.py`, routers in `backend/app/api/`) exposes `/api/v1/*`. `backend/app/mcp/` exposes the same retrieval core as **read-only** MCP tools (`hybrid_search`, `get_chunk`, `rerank`, `list_sources`) — see `docs/mcp.md`.
 6. `backend/app/agents/` adds an **opt-in** (`AGENTS_ENABLED`, default false) research-briefing multi-agent supervisor (`planner -> retrieval + rerank -> writer -> verifier`) that **wraps, never replaces** the hybrid retrieval and deterministic synthesis. The provenance-enforcing `VerifierAgent` (reusing `relevance_eval.faithfulness_score`) rejects any briefing with a claim that does not trace to a retained `source_url`.
+7. `backend/app/generation/` adds an **opt-in** (`GENERATION_ENABLED`, default false) grounded-generation answer path **and its faithfulness gate** — the generation analogue of the relevance gate. `answer()` retrieves, drafts grounded-only via the reused provider/`WriterAgent`, verifies via the reused `VerifierAgent`, and returns `{text, citations[]}` with a `source_url` per claim. `run_gen_eval.py` mirrors `app/eval/run_eval.py`: it gates **citation-accuracy / faithfulness / answer-correctness** against `thresholds.example.json` and **exits non-zero on regression**, fully offline. The headline: **generation is gated on faithfulness the same way search is gated on relevance.**
 
 ## Agents architecture & invariants
 
@@ -92,6 +93,19 @@ The agents package wraps existing functions — no parallel retrieval/synthesis:
 - **Flag-gated, default-off.** `AGENTS_ENABLED` is read via `os.getenv` (there is no `config.py`), defaulting to false.
 - **Provider-swappable.** The LLM lives behind one `AgentLlmProvider` protocol: `DeterministicProvider` (offline/test default), `OllamaProvider` (documented local default, wired `OLLAMA_URL`/`OLLAMA_MODEL`). Tests never require a network.
 - **Reuse the eval skill.** Citation-accuracy + answer-faithfulness are measured on the committed `backend/app/agents/fixtures/briefing_eval.json` fixture via `relevance_eval.faithfulness_score` — fully offline (`backend/app/agents/eval.py`).
+
+## Generation architecture & invariants
+
+`backend/app/generation/` is the optional grounded-generation answer path plus
+its faithfulness gate. It **reuses** the agents' provider/writer/verifier — there
+is no second provider interface, writer, or verifier.
+
+- **Gated on faithfulness, like search on relevance.** This is the headline. `run_gen_eval.py` mirrors `app/eval/run_eval.py`: load fixture + thresholds → eval → `evaluate_thresholds` → JSON/MD via `to_json`/`to_markdown` → exit 0/1. It **exits non-zero on regression**. Offline (deterministic provider + canned chunks) so it runs in CI.
+- **Grounded-only, `source_url` per claim.** `answer()` retrieves, drafts via the reused `WriterAgent` (provider), and runs the reused `VerifierAgent`; only claims that *trace* (token-supported AND citing a retained `source_url`) become citations. Untraced claims are dropped and surfaced in `dropped_claims`. The return shape is `{text, citations[]}` with a `source_url` on every citation.
+- **`GENERATION_ENABLED` default off (opt-in).** Read via `os.getenv` (no `config.py`), distinct from `AGENTS_ENABLED`. When off, the default answer path is the existing deterministic `/answer` synthesis, byte-for-byte unchanged; nothing here runs (`backend/tests/test_generation.py` proves off-by-default).
+- **Three metrics, reusing the eval skill.** citation-accuracy (from the reused `VerifierAgent`), faithfulness (`relevance_eval.faithfulness_score`; the offline default uses token support — true contradiction detection is the LLM/NLI extension behind the scorer interface), answer-correctness (token-overlap F1 vs a committed gold answer). The eval shapes these into the `relevance_eval` report schema so the shared gate/renderer are reused unchanged.
+- **Catches the unfaithful answer.** A committed fixture injects an answer whose claim its cited source does not support → faithfulness < 1.0 and the gate FAILS when thresholds require full faithfulness; a fully-grounded fixture passes. A test asserts both.
+- **Provider-swappable, no secrets.** `DeterministicProvider` (offline/test default) or the wired local `OllamaProvider` (`AGENTS_PROVIDER=ollama`, `OLLAMA_URL`/`OLLAMA_MODEL`). Tests never require a network; no secrets in git.
 
 ## Invariants I must never break
 
@@ -117,6 +131,7 @@ Repo-specific invariants:
 - [ ] No secrets added; Compose stays on env-var interpolation with non-secret defaults.
 - [ ] If MCP tools changed: they stay thin (no business logic), read-only, and validated; `docs/mcp.md` + the README "Agent Access" section are updated; `backend/tests/test_mcp_tools.py` covers the change.
 - [ ] If the agents package changed: deterministic synthesis stays wrapped (not replaced) and `/answer` is unchanged with `AGENTS_ENABLED` off; every briefing claim carries a retained `source_url`; `VerifierAgent` still rejects any non-tracing claim (test proves an unsupported claim is caught); the reliability contract is honoured; the provider stays swappable; `backend/app/agents/eval.py` reuses `relevance_eval.faithfulness_score`; `backend/tests/test_agents.py` covers the change and runs fully offline.
+- [ ] If the generation package changed: `GENERATION_ENABLED` stays off by default and the deterministic `/answer` path is unchanged when off (test proves it); `answer()` returns `{text, citations[]}` with a `source_url` on every citation, grounded only in retrieved chunks; it **reuses** the provider/`WriterAgent`/`VerifierAgent` (no duplicate provider/verifier); the eval reports citation-accuracy + faithfulness + answer-correctness and `run_gen_eval.py` gates them and exits non-zero on regression; a committed fixture proves the gate catches an unfaithful answer; `backend/tests/test_generation.py` covers the change and runs fully offline; no secrets added.
 
 ## External services & config
 
