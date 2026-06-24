@@ -6,9 +6,10 @@ import { SourceMetadata } from "./SourceMetadata";
 type AnswerSummaryProps = {
   model: AnswerViewModel;
   isLoading?: boolean;
+  fallbackNotice?: string | null;
 };
 
-export function AnswerSummary({ model, isLoading = false }: AnswerSummaryProps) {
+export function AnswerSummary({ model, isLoading = false, fallbackNotice = null }: AnswerSummaryProps) {
   return (
     <section className="answer-summary-panel" aria-labelledby="answer-heading">
       <div className="answer-summary-panel__top">
@@ -33,6 +34,7 @@ export function AnswerSummary({ model, isLoading = false }: AnswerSummaryProps) 
       )}
       <div className="explain-block">
         <h3>Why it matters</h3>
+        {fallbackNotice && <p className="fallback-notice">{fallbackNotice}</p>}
         <p>{model.explanation}</p>
         <p>{model.important}</p>
       </div>
